@@ -9,6 +9,62 @@ the `oai-rfsim-handover-testbed` repository:
 
 ORANSlice itself has not yet been run with these settings.
 
+## Step by step on WS-03
+
+The numbered sections further down explain each step.
+
+0. **Check the radio is free.** Nobody else may be using the shared X310
+   (`192.168.40.2`), and the testbed's vanilla gNB (`start_gnb.sh`) must not be
+   running: only one gNB can use the radio at a time.
+1. **Get the code.**
+   ```bash
+   cd ~
+   git clone -b cerise/x310-fn990 https://github.com/fsnobre/cerise_oranslice.git
+   cd cerise_oranslice
+   ```
+2. **Dependencies, first time only.** Install protobuf-c as in the top-level
+   `README.md` (probably already on WS-03), then
+   `cd oai_ran/cmake_targets && ./build_oai -I -w USRP`.
+3. **Build against UHD 4.4.0** ([section 2](#2-build-oranslice-against-uhd-440)).
+   The `ldd` check must show `libuhd.so.4.4.0` from `~/uhd-4.4.0/lib`.
+4. **Start the testbed core** ([section 3](#3-core)): generate an experiment
+   folder and run only its `start_core.sh`. The core logs go to that folder's
+   `logs/latest/cn/`.
+5. **Host network**, needed again after every reboot:
+   ```bash
+   sudo ip link set <10gbe-iface> mtu 9000
+   sudo sysctl -w net.core.rmem_max=33554432 net.core.wmem_max=33554432
+   ```
+6. **Start the gNB** ([section 4](#4-gnb)):
+   ```bash
+   cd ~/cerise_oranslice
+   DRY_RUN=1 ./cerise/run_gnb_x310.sh   # checks the UHD link, prints the command
+   ./cerise/run_gnb_x310.sh             # Ctrl-C to stop
+   ```
+7. **Connect the FN990** on the modem host as in the earlier runs. Registration
+   shows in the gNB log and in the experiment folder's AMF log. Measure with the
+   testbed's `scripts/modem/fn990_speedtest.sh`. The vanilla run reached about
+   80 Mbit/s down and 3 Mbit/s up.
+8. **Control the slice** while it runs, from a second terminal
+   ([section 5](#5-slice-policy-no-xapp)):
+   ```bash
+   ./cerise/set_slice_policy.py                    # show the current values
+   ./cerise/set_slice_policy.py --min 20 --max 50  # change them
+   ```
+   The gNB picks up a change within about 1.3 s. Run the speed test again after
+   each change.
+9. **Stop.** Ctrl-C the gNB, then stop the core from the testbed root with
+   `(cd oai-cn5g && docker compose down)`.
+
+### If something goes wrong
+
+| Symptom | What to do |
+|---|---|
+| `RFNoC protocol mismatch` | The build is linked to the wrong UHD. Redo step 3. The run script normally refuses such a build before it starts |
+| The FN990 does not see the cell | Find out which daughterboard (A or B) the antennas are on before changing anything. The conf uses the default, A |
+| The FN990 registers but the uplink is poor | Set `do_SRS = 0` in the conf (the one notable difference from the vanilla run) and restart the gNB |
+| `Error in opening rrmPolicy file` | The policy path is wrong. Start the gNB with `run_gnb_x310.sh`, not with `nr-softmodem` directly |
+
 ## What changed from upstream ORANSlice
 
 The gNB conf is

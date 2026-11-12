@@ -124,6 +124,20 @@ gNB logs a `Slice <n>, NSSAI 1.ffffff, rrmPolicy.dedicated_ratio ...` line per
 slice (not yet checked how slices are counted with a single S-NSSAI), and
 `Error in opening rrmPolicy file` if the path is wrong.
 
+To change the policy, while the gNB runs or before, use the helper. It checks
+the values as above and replaces the file in one step, so the gNB never reads a
+half-written file. Editing the JSON by hand also works, but nothing checks it,
+and `sd` must be a decimal integer (a hex string is read as FFFFFF):
+
+```bash
+./cerise/set_slice_policy.py                                # show the policy
+./cerise/set_slice_policy.py --min 20 --max 50              # SST 1 / SD FFFFFF
+./cerise/set_slice_policy.py --dedicated 10 --min 30 --max 100
+```
+
+`--sst`/`--sd` select another slice and `--remove` deletes one. A second slice
+also needs its S-NSSAI in the gNB conf, the core and the UE.
+
 The ORANSlice E2 agent still starts: it binds UDP port 6655 and logs an
 `E2 agent heartbeat` every 3 s. It does not need an E2 simulator or a RIC.
 

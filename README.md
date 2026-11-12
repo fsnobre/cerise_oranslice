@@ -118,7 +118,7 @@ cd ~/ORANSlice/oai_ran/cmake_targets/ran_build/build
 sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/ORANSlice.gnb.sa.band78.fr1.106PRB.usrpx310.conf --sa  --rfsim
 ```
 
-Over-the-Air Transmission with USRP X310:
+Over-the-Air Transmission with USRP X310 (in the CERISE lab, use `cerise/run_gnb_x310.sh` instead; see `cerise/README.md`):
 ```
 cd ~/ORANSlice/oai_ran/cmake_targets/ran_build/build 
 sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/ORANSlice.gnb.sa.band78.fr1.106PRB.usrpx310.conf --sa --usrp-tx-thread-config 1
@@ -187,7 +187,7 @@ After applying the patch, a file `rrmPolicy.json` is added to the root folder or
 
 
 Accordingly, you need to set 
-> SliceConf = "/home/wineslab/ORANSlice/rrmPolicy.json";
+> SliceConf = "/path/to/ORANSlice/oai_ran/rrmPolicy.json";
 
 in `MACRLCs` of `ORANSlice.gnb.sa.band78.fr1.106PRB.usrpx310.conf` to the correct path of `rrmPolicy.json`.
 

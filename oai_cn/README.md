@@ -58,4 +58,4 @@ docker ps -a
 If there are oai core containers exited a few seconds ago, it indicates the core network is encountering an error.
 
 # OAI gNB Config
-Run the gNB with the config file `oai_slicing_usrpX310.conf`. Change the USRP arguments as needed or set to rfsim mode to test the OAI core network.
+Run the gNB with `oai_ran/targets/PROJECTS/GENERIC-NR-5GC/CONF/ORANSlice.gnb.sa.band78.fr1.106PRB.usrpx310.conf`. Change the USRP arguments as needed or set to rfsim mode to test the OAI core network. For the CERISE lab X310 and FN990, see `cerise/README.md`.

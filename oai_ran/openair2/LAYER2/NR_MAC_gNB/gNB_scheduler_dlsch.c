@@ -627,20 +627,23 @@ void nr_update_slice_policy(module_id_t module_id)
   uint8_t min_ratio, max_ratio, dedicated_ratio;
   const char *file = RC.nrmac[module_id]->SliceConfigFile;
 
+  // Parse once and release the tree on every path: this runs every 128 frames.
   s_obj = json_object_from_file(file);
 
-  if(json_object_from_file(file) == NULL){
+  if(s_obj == NULL){
     LOG_W(NR_MAC, "Error in opening rrmPolicy file \n");
 	return;
   }
 
   if(!json_object_object_get_ex(s_obj,"rrmPolicyRatio",&s_array)){
     LOG_W(NR_MAC, "Key rrmPolicyRatio not found in rrmPolicy file \n");
+	json_object_put(s_obj);
 	return;
   }
 
   if(json_object_get_type(s_array) != json_type_array){
     LOG_W(NR_MAC, "Error in json file array format\n");
+	json_object_put(s_obj);
 	return;
   }
 
@@ -676,6 +679,7 @@ void nr_update_slice_policy(module_id_t module_id)
       }
     }
   }
+  json_object_put(s_obj);
 
   int sum = 0;
   int sum_dedi = 0;
@@ -1598,8 +1602,8 @@ static void nr_fr1_dlsch_preprocessor(module_id_t module_id, frame_t frame, sub_
   nr_slice_preprocess(module_id, frame, slot);
 
   // Slice policy update
-  // if ((frame & 127) == 0 && slot == 0)
-  //   nr_update_slice_policy(module_id);
+  if ((frame & 127) == 0 && slot == 0)
+    nr_update_slice_policy(module_id);
 
   int bw = scc->downlinkConfigCommon->frequencyInfoDL->scs_SpecificCarrierList.list.array[0]->carrierBandwidth;
   int average_agg_level = 4; // TODO find a better estimation

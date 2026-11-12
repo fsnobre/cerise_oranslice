@@ -105,12 +105,27 @@ with Unix-second timestamps (`date -d @<seconds>` converts them). It runs
 `nr-softmodem --sa -E --usrp-tx-thread-config 1`. Override with `GNB_ARGS`,
 `OAI_BUILD_DIR` or `UHD_PREFIX`.
 
-## 5. Slice policy
+## 5. Slice policy (no xApp)
 
-`cerise/rrmPolicy.json` holds one policy for SST 1 / SD FFFFFF (no `sd` key
-means FFFFFF). The MAC reads it only after `doc/rrmPolicyJson.patch` is applied
-to `oai_ran`. Without the patch the gNB runs with its default slice policy,
-which is enough to test attach and traffic.
+Without an xApp, the slice policy comes from `cerise/rrmPolicy.json`. The code
+part of `doc/rrmPolicyJson.patch` is applied on this branch: the MAC re-reads
+the file every 128 frames (1.28 s), so edits to it take effect while the gNB
+runs. The patch's own `oai_ran/rrmPolicy.json` (three slices) was not added;
+`run_gnb_x310.sh` points `SliceConf` at `cerise/rrmPolicy.json` instead. The
+reader was also changed to parse the file once and free it, since upstream
+parsed it twice and leaked both copies every 1.28 s.
+
+The file holds one policy for SST 1 / SD FFFFFF (no `sd` key means FFFFFF).
+Ratios are percentages of the PRBs: `dedicated_ratio` <= `min_ratio` <=
+`max_ratio`, and the sums over all slices of `min_ratio` and of
+`dedicated_ratio` must stay at or below 100, or the gNB resets them to 0. A
+policy for an S-NSSAI that is not in the gNB conf is ignored. After each read the
+gNB logs a `Slice <n>, NSSAI 1.ffffff, rrmPolicy.dedicated_ratio ...` line per
+slice (not yet checked how slices are counted with a single S-NSSAI), and
+`Error in opening rrmPolicy file` if the path is wrong.
+
+The ORANSlice E2 agent still starts: it binds UDP port 6655 and logs an
+`E2 agent heartbeat` every 3 s. It does not need an E2 simulator or a RIC.
 
 ## Not known yet
 

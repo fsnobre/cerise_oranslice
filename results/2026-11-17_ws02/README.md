@@ -37,11 +37,14 @@ and the conf names WS-03's X310 address.
 3. **No duplicate session.** In one run the modem released its session 100 ms after
    the accept and asked again; the gNB never answered the second PDU Session Resource
    Setup (session ID 1 still held from the first), and the AMF later lost the session.
-   Connecting once (`mmcli -m any --simple-connect="apn=oai,ip-type=ipv4"`) avoided it.
-4. **Configure `wwan0`.** `mmcli` opens the session but nothing configured the
-   interface on the laptop (NetworkManager does not manage the modem there):
-   `ip link set wwan0 up`, `ip addr add <session address>/30 dev wwan0`, and a host
-   route `8.8.8.8/32 dev wwan0` to keep the laptop's default routes.
+   Connecting once avoided it. From the next run on, only NetworkManager connects
+   the modem (`nmcli connection up oai`); see the log review below.
+4. **Configure `wwan0`.** `mmcli` opens the session but does not configure the
+   interface. At 17:30 `wwan0` was down with no address; it was set up by hand
+   (`ip link set wwan0 up`, `ip addr add <session address>/30 dev wwan0`, host route
+   `8.8.8.8/32 dev wwan0`). The log review below shows that NetworkManager then took
+   over at 17:31:59 and configured `wwan0` itself (12.1.1.3/29), which is the address
+   the working ping came from.
 
 Result: `ping -I wwan0 8.8.8.8`, 5/5, average 30.7 ms (the core alone reached 8.8.8.8
 in about 18 ms).
@@ -56,7 +59,7 @@ One slice, SST 1 / SD FFFFFF, dedicated 5 %, min 10 %.
 |---|---|---|---|---|---|
 | 17:36:10 | 100 % | 10.79 Mbit/s | 9.87–12.88 | 0.22 Mbit/s once, then 2 failed | 31.1 ms |
 | 17:41:33 | 50 % | 11.22 Mbit/s | 10.75–13.25 | 0.24 Mbit/s once, then 2 failed | 31.4 ms |
-| 17:45:33 | 20 % | no result: the connection dropped during the test | | | |
+| 17:45:33 | 20 % | no result: the radio link was already lost (ping 0/20 at the start of the test) | | | |
 
 The gNB log confirms each change (`Slice 1, NSSAI 1.ffffff, ... max_ratio N`: 503 reads
 at 100, 203 at 50, 55 at 20 until shutdown).
@@ -83,12 +86,91 @@ bind; it still has to be measured. For comparison, vanilla OAI on WS-03 gave abo
   (−93 dBm) was clean. Which modem was which was not established.
 - **Disk.** WS-02's `/` is at 100 % (about 3.5 GB free).
 
+## Log review (2026-11-18)
+
+All of `raw/` read again after the run. Core times come from `docker logs -t` (UTC,
+shown here in lab time); the gNB log has no timestamps, so it is ordered against the
+others by its log lines.
+
+### What worked
+
+- **Core.** The gNB connected to the AMF; two SIMs registered: IMSI ...0777 (the
+  FN990 on the laptop) and ...0776 (another modem, which registered at 17:30:24 but
+  never asked for a session).
+- **Data session.** IMSI ...0777, DNN `oai`, slice SST 1 / SD FFFFFF, address
+  12.1.1.3, active from 17:31:59 until shutdown at 17:46. The UPF had both rules
+  (uplink, and downlink to the gNB at 192.168.70.129); NAT covered 12.1.1.0/24.
+  The AMF logged no signalling for it after 17:32:08: the session stayed up
+  through both speed tests.
+- **Slice policy.** Read the whole run without file errors (503 reads at 100 %,
+  203 at 50 %, 55 at 20 %).
+- **gNB process.** No crash, assertion, USRP overflow or late samples in the
+  17:29:33 run (unlike 17:28).
+
+### What did not
+
+1. **Uplink.** 604 `Detected UL Failure on PUSCH after 10..15 PUSCH DTX` lines: the
+   modem often does not transmit on its uplink grants. Matches the broken uploads.
+2. **Unstable radio link.** 136 random-access attempts, 27 RRC re-establishments and
+   about 20 RNTIs: the modem kept reconnecting at the radio level, which the core
+   never saw. Early in the run it triggered five re-establishments in a row with
+   cause **Reconfiguration Failure** (it rejected an RRC reconfiguration from this
+   gNB; this conf enables `do_SRS` and `do_CSIRS`, and `do_SRS = 0` is the first
+   thing to try). Later re-establishments have cause Other Failure.
+3. **The lost connection started under 50 %, not 20 %.** The modem changed RNTI
+   (5017 to 1e99) and went out of sync while the policy was still 50 % (uplink BLER
+   0.68 at the end of that period; 0.996 and no RSRP measurements under 20 %). The
+   third speed test's first step (ping 1.1.1.1 over `wwan0`) lost 20/20, so the 20 %
+   value was never measured. By shutdown the modem was back in sync (downlink MCS 27,
+   BLER 0).
+4. **The session was set up twice at the start, by the laptop's desktop.**
+   - 17:30:22: a direct ModemManager connect (not NetworkManager, not a repository
+     script) set up session 12.1.1.2; `wwan0` was not configured yet.
+   - 17:31:34: NetworkManager logged `op="connection-activate" name="oai2"` from
+     `gnome-shell` (pid 4022): the profile `oai2` was picked in the GNOME top-bar
+     menu. Its first attempts failed (`No valid data port found`) because the
+     12.1.1.2 session held the data port; NetworkManager then released that session
+     (UE-initiated PDU Session Release in the SMF, 17:31:34) and connected itself,
+     giving 12.1.1.3/29 at 17:31:59.
+   - **The APN in the NetworkManager profile did not reach the core.** The bearer
+     connected on `wwan0` reported APN `oai2`, IP type `ipv4v6` (all three speed
+     test logs), yet the AMF and SMF logged `Requested DNN: oai` for every request.
+     The FN990 used its own context 1 (`AT+CGDCONT=1,"IP","oai"`, set with
+     `scripts/modem/fn990_set_apn.sh` in the testbed repository) and ignored the APN
+     it was handed; context 1 being IPv4-only also explains ModemManager's IPv6
+     `CallFailed`. So the DNN is chosen on the modem, and picking a profile in GNOME
+     only changes *when* a session is torn down and requested again.
+   - The SMF kept a half-open session for 12.1.1.2 until shutdown, and at 17:32:08
+     the modem answered a stray message for it with a 5GSM STATUS (cause 98).
+     Harmless for the live session.
+5. **NetworkManager autoconnect.** Before the run, profile `internet` (APN `internet`,
+   autoconnect on) had tried to connect by itself about every 3 minutes from before
+   17:00 until 17:27. The laptop had seven modem profiles (`default`, `ims`, two
+   `internet`, `oai`, `oai2`, `openairinterface`).
+
+### Changed on the laptop afterwards (2026-11-18)
+
+- Deleted every NetworkManager modem profile except `oai`. To change the DNN, change
+  the modem's context 1 (`fn990_set_apn.sh --apn <dnn>`), not the profile.
+- `oai`: APN `oai`, autoconnect on, IPv4 automatic, **IPv6 disabled** (the core gives
+  IPv4 only; ModemManager had logged `couldn't start IPv6 network: CallFailed`).
+- From now on NetworkManager alone controls the modem: no `mmcli --simple-connect`,
+  no manual `ip addr add`, and no picking a modem connection from the top bar during
+  a run. Fresh session: `nmcli connection down oai && nmcli connection up oai`.
+
+### What the numbers support
+
+The two downloads show the link carried about 11 Mbit/s with the cap at 100 % or
+50 %: the cap did not bind, the link did. They say nothing yet about what the policy
+does; that needs a stable link and the 20 % run.
+
 ## Next steps
 
 1. Repeat the 20 % run, then restore 100 % and run once more to show the drop comes
    from the policy. Reset the policy first: on WS-02 it was left at max 20 %.
 2. Look into the uplink (PUSCH DTX, 5 PRBs) and the `pucch0_DTX` before trusting
-   throughput numbers.
+   throughput numbers. First try: `do_SRS = 0`, against the Reconfiguration
+   Failures seen in the log review.
 3. On this branch: let `run_gnb_x310.sh` accept the system UHD and take the X310 address
    as a setting, so WS-02 runs need no hand-edited conf.
 

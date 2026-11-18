@@ -35,3 +35,6 @@ pip-wheel-metadata/
 # Conda/local environment artifacts
 .conda/
 conda-meta/
+
+# Run logs: the core logs hold SIM session keys. Keep them local.
+results/*/raw/

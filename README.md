@@ -183,7 +183,7 @@ cd oai_ran
 git apply ../doc/rrmPolicyJson.patch
 ```
 
-On the `cerise/x310-fn990` branch the code part of this patch is already applied; see `cerise/README.md`.
+In this fork the code part of this patch is already applied; see `cerise/README.md`.
 
 After applying the patch, a file `rrmPolicy.json` is added to the root folder or `ORANSlice` and the MAC layer will read `rrmPolicy.json` periodically to update the internal slicing policy.
 

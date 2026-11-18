@@ -19,7 +19,7 @@ The numbered sections further down explain each step.
 1. **Get the code.**
    ```bash
    cd ~
-   git clone -b cerise/x310-fn990 https://github.com/fsnobre/cerise_oranslice.git
+   git clone https://github.com/fsnobre/cerise_oranslice.git
    cd cerise_oranslice
    ```
 2. **Dependencies, first time only.** Install protobuf-c as in the top-level
@@ -164,7 +164,7 @@ with Unix-second timestamps (`date -d @<seconds>` converts them). It runs
 ## 5. Slice policy (no xApp)
 
 Without an xApp, the slice policy comes from `cerise/rrmPolicy.json`. The code
-part of `doc/rrmPolicyJson.patch` is applied on this branch: the MAC re-reads
+part of `doc/rrmPolicyJson.patch` is applied in this fork: the MAC re-reads
 the file every 128 frames (1.28 s), so edits to it take effect while the gNB
 runs. The patch's own `oai_ran/rrmPolicy.json` (three slices) was not added;
 `run_gnb_x310.sh` points `SliceConf` at `cerise/rrmPolicy.json` instead. The

@@ -4,7 +4,10 @@ First end-to-end data with this branch's ORANSlice gNB: the lab FN990, plugged i
 the laptop, reached the internet through the gNB on WS-02 and the legacy OAI core
 on WS-02. A download sweep over the slice policy started but was cut short.
 
-Raw logs are in `raw/` (git-ignored: the core logs hold the SIM's session keys).
+Raw logs are in `logs/` (git-ignored: the core logs hold the SIM's session keys).
+This record was `results/2026-11-17_ws02/` (with `raw/`) until 2026-11-18, when the
+repository moved to the `experiments/` layout; this run predates that layout and
+its helpers, so its `logs/` is organised by source (`gnb/`, `core/`, `laptop/`).
 Times are lab time (UTC-3) unless marked UTC. The legacy AMF container logs one hour
 ahead of the SMF.
 
@@ -17,7 +20,7 @@ ahead of the SMF.
 | Build | `cd oai_ran/cmake_targets && ./build_oai -w USRP --gNB` (no `-I`: dependencies were already installed, and `-I` can replace the shared `/usr/include/simde`) |
 | UHD | system UHD 4.8.0, `/usr/local/lib/libuhd.so.4.8.0`, for both `liboai_usrpdevif.so` and `uhd_usrp_probe` |
 | X310 | `192.168.40.3`, FPGA 39.3, two UBX-160 v2. Opens with UHD 4.8.0 on WS-02 (on WS-03 the README says FPGA 39.3 needs UHD 4.4.0; not re-checked) |
-| gNB conf | `ORANSlice.gnb.sa.band78.fr1.106PRB.usrpx310.conf` with two changes, saved as `raw/gnb/gnb_ws02.conf`: `addr=192.168.40.3` and an absolute `SliceConf` to `cerise/rrmPolicy.json`. Internal clock and time |
+| gNB conf | `ORANSlice.gnb.sa.band78.fr1.106PRB.usrpx310.conf` with two changes, saved as `logs/gnb/gnb_ws02.conf`: `addr=192.168.40.3` and an absolute `SliceConf` to `cerise/rrmPolicy.json`. Internal clock and time |
 | Run command | `sudo ./nr-softmodem -O <conf> --sa -E --usrp-tx-thread-config 1`, output through `tee` (no wall-clock timestamps in the log) |
 | Core | legacy OAI core v1.5.1 on WS-02 (`docker-compose-legacy.yml` in another user's ORANSlice tree), AMF 192.168.70.132, gNB 192.168.70.129 on bridge `demo-oai` |
 | UE | Telit FN990 (lab SIM) on the laptop, ModemManager, `wwan0` |
@@ -88,7 +91,7 @@ bind; it still has to be measured. For comparison, vanilla OAI on WS-03 gave abo
 
 ## Log review (2026-11-18)
 
-All of `raw/` read again after the run. Core times come from `docker logs -t` (UTC,
+All of `logs/` read again after the run. Core times come from `docker logs -t` (UTC,
 shown here in lab time); the gNB log has no timestamps, so it is ordered against the
 others by its log lines.
 
@@ -111,12 +114,15 @@ others by its log lines.
 
 1. **Uplink.** 604 `Detected UL Failure on PUSCH after 10..15 PUSCH DTX` lines: the
    modem often does not transmit on its uplink grants. Matches the broken uploads.
-2. **Unstable radio link.** 136 random-access attempts, 27 RRC re-establishments and
-   about 20 RNTIs: the modem kept reconnecting at the radio level, which the core
+2. **Unstable radio link.** 136 random-access attempts, 9 accepted RRC
+   re-establishments (all completed) and 22 RNTIs: the modem kept reconnecting at the radio level, which the core
    never saw. Early in the run it triggered five re-establishments in a row with
    cause **Reconfiguration Failure** (it rejected an RRC reconfiguration from this
    gNB; this conf enables `do_SRS` and `do_CSIRS`, and `do_SRS = 0` is the first
-   thing to try). Later re-establishments have cause Other Failure.
+   thing to try). The other four have cause Other Failure. (Corrected on
+   2026-11-18 with `cerise/summarize_gnb_log.sh`: this review first said 27
+   re-establishments and about 20 RNTIs; 27 counted the three log lines each
+   re-establishment writes.)
 3. **The lost connection started under 50 %, not 20 %.** The modem changed RNTI
    (5017 to 1e99) and went out of sync while the policy was still 50 % (uplink BLER
    0.68 at the end of that period; 0.996 and no RSRP measurements under 20 %). The
@@ -166,6 +172,10 @@ does; that needs a stable link and the 20 % run.
 
 ## Next steps
 
+Steps 1 and 2 are planned as
+[`../2026-11-18_ws02-srs0-sweep/`](../2026-11-18_ws02-srs0-sweep/README.md); step 3 was
+done on 2026-11-18 (`run_gnb_x310.sh` now runs an experiment folder with any UHD).
+
 1. Repeat the 20 % run, then restore 100 % and run once more to show the drop comes
    from the policy. Reset the policy first: on WS-02 it was left at max 20 %.
 2. Look into the uplink (PUSCH DTX, 5 PRBs) and the `pucch0_DTX` before trusting
@@ -178,7 +188,7 @@ does; that needs a stable link and the 20 % run.
 
 | Path | Contents |
 |---|---|
-| `raw/gnb/` | gNB logs `gnb_20261117_172611` (no AMF: core was down), `_172823` (ended in a USRP overflow), `_172933` (the sweep), the conf used, the policy at shutdown |
-| `raw/core/` | `docker logs -t` of all 9 core containers at 17:46, and `state_at_shutdown.txt` (containers, AMF/SMF/UPF settings, UPF NAT rule, gNB process, build commit, UHD link) |
-| `raw/laptop/` | ModemManager journal from 17:00, modem and `wwan0` state, the three speed test folders |
-| `raw/earlier_core_logs/` | the core logs read while debugging the friend's earlier runs (18:46 UTC AMF log; runs 2–4: slice reject, 12.1.2.x NAT, duplicate session) |
+| `logs/gnb/` | gNB logs `gnb_20261117_172611` (no AMF: core was down), `_172823` (ended in a USRP overflow), `_172933` (the sweep), the conf used, the policy at shutdown |
+| `logs/core/` | `docker logs -t` of all 9 core containers at 17:46, and `state_at_shutdown.txt` (containers, AMF/SMF/UPF settings, UPF NAT rule, gNB process, build commit, UHD link) |
+| `logs/laptop/` | ModemManager journal from 17:00, modem and `wwan0` state, the three speed test folders |
+| `logs/earlier_core_logs/` | the core logs read while debugging the friend's earlier runs (18:46 UTC AMF log; runs 2–4: slice reject, 12.1.2.x NAT, duplicate session) |

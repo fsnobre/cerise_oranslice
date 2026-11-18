@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""Set the PRB ratios of one slice in cerise/rrmPolicy.json.
+"""Set the PRB ratios of one slice in an experiment's rrmPolicy.json.
 
 The gNB re-reads the file every 128 frames (1.28 s), so a change takes effect
 while it runs. This tool checks the values the way the gNB would and replaces
-the file atomically, so the gNB never reads a half-written file.
+the file atomically, so the gNB never reads a half-written file. Every change
+is appended, with its time, to logs/policy_changes.tsv beside the file.
 
-  ./cerise/set_slice_policy.py                      # show the current policy
-  ./cerise/set_slice_policy.py --min 20 --max 50    # SST 1 / SD FFFFFF
-  ./cerise/set_slice_policy.py --dedicated 10 --min 30 --max 100
-  ./cerise/set_slice_policy.py --sst 1 --sd 000002 --min 10 --max 40
+  EXP=experiments/2026-11-19_ws02-srs0-sweep
+  ./cerise/set_slice_policy.py $EXP                       # show the current policy
+  ./cerise/set_slice_policy.py $EXP --max 50              # SST 1 / SD FFFFFF
+  ./cerise/set_slice_policy.py $EXP --dedicated 10 --min 30 --max 100
+  ./cerise/set_slice_policy.py $EXP --sst 1 --sd 000002 --min 10 --max 40
+
+The target is an experiment folder or a policy file; without one it is
+cerise/rrmPolicy.json, the template new experiments start from.
 
 Ratios are percentages of the cell's PRBs (0-100):
   dedicated  PRBs reserved for the slice even when it has no traffic
@@ -20,6 +25,7 @@ A slice that is not in the gNB conf's snssaiList is ignored by the gNB.
 """
 
 import argparse
+import datetime as dt
 import json
 import os
 import sys
@@ -68,7 +74,8 @@ def check(entries):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--file", type=Path, default=DEFAULT_FILE, help="policy file (default: %(default)s)")
+    parser.add_argument("target", nargs="?", type=Path, default=DEFAULT_FILE,
+                        help="experiment folder or policy file (default: %(default)s)")
     parser.add_argument("--sst", type=int, default=1)
     parser.add_argument("--sd", default="FFFFFF", help="hex slice differentiator (default FFFFFF)")
     parser.add_argument("--dedicated", type=ratio)
@@ -77,7 +84,11 @@ def main():
     parser.add_argument("--remove", action="store_true", help="remove this slice's entry")
     args = parser.parse_args()
 
-    data = json.loads(args.file.read_text()) if args.file.exists() else {"rrmPolicyRatio": []}
+    args.file = args.target / "rrmPolicy.json" if args.target.is_dir() else args.target
+    if not args.file.exists():
+        parser.error(f"no policy file at {args.file}")
+    print(f"{args.file}:")
+    data = json.loads(args.file.read_text())
     entries = data["rrmPolicyRatio"]
 
     if args.dedicated is None and args.min is None and args.max is None and not args.remove:
@@ -113,7 +124,24 @@ def main():
     os.chmod(tmp, 0o644)
     os.replace(tmp, args.file)
     describe(entries)
+    record(args.file, entries, "remove" if args.remove else "set", key)
     return 0
+
+
+def record(policy_file, entries, action, key):
+    """Append the change and the resulting policy to logs/policy_changes.tsv."""
+    history = policy_file.parent / "logs" / "policy_changes.tsv"
+    history.parent.mkdir(exist_ok=True)
+    new = not history.exists()
+    with history.open("a") as handle:
+        if new:
+            handle.write("time\taction\tslice\tpolicy_after (sst/sd dedicated/min/max %)\n")
+        now = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+        after = "; ".join(
+            f"{slice_key(e)[0]}/{slice_key(e)[1]:06X} {e['dedicated_ratio']}/{e['min_ratio']}/{e['max_ratio']}" for e in entries
+        )
+        handle.write(f"{now}\t{action}\t{key[0]}/{key[1]:06X}\t{after}\n")
+    print(f"recorded in {history}")
 
 
 if __name__ == "__main__":
